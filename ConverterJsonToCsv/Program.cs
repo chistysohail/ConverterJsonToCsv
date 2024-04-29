@@ -29,7 +29,7 @@ class Program
             }
             else if (jsonToken.Type == JTokenType.Array)
             {
-                ProcessJArray((JArray)jsonToken, csv, new List<string>());
+                ProcessJArray((JArray)jsonToken, csv, new List<string>(), "Root");
             }
 
             File.WriteAllText(csvFilePath, csv.ToString());
@@ -54,7 +54,7 @@ class Program
             else if (property.Value is JArray array)
             {
                 hasSubObject = true;
-                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name });
+                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name }, property.Name);
             }
             else
             {
@@ -65,22 +65,53 @@ class Program
 
         if (!hasSubObject && headers.Count > 0)
         {
-            csv.AppendLine(string.Join(",", headers));
-            csv.AppendLine(string.Join(",", values));
+            csv.AppendLine(string.Join(",", headers));  // Print headers
+            csv.AppendLine(string.Join(",", values));  // Print values
             csv.AppendLine();  // Add a blank line to separate different "tables"
         }
     }
 
-    static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys)
+    static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys, string arrayName)
     {
         int index = 0;
+        var headers = new List<string> { "Serial Number" };
+        headers.AddRange(GetHeaders(jArray.First));
+        csv.AppendLine(string.Join(",", headers));
+
         foreach (JToken item in jArray)
         {
+            var values = new List<string> { (index + 1).ToString() }; // Add serial number starting at 1
             if (item.Type == JTokenType.Object)
             {
-                ProcessJObject((JObject)item, csv, new List<string>(parentKeys) { $"{index}" });
+                JObject obj = (JObject)item;
+                foreach (var prop in obj.Properties())
+                {
+                    if (prop.Value.Type != JTokenType.Array && prop.Value.Type != JTokenType.Object)
+                    {
+                        values.Add(prop.Value.ToString());
+                    }
+                }
+                csv.AppendLine(string.Join(",", values));
             }
             index++;
         }
+        csv.AppendLine();  // Add a blank line to separate different "tables"
+    }
+
+    static List<string> GetHeaders(JToken firstItem)
+    {
+        var headers = new List<string>();
+        if (firstItem.Type == JTokenType.Object)
+        {
+            JObject obj = (JObject)firstItem;
+            foreach (var prop in obj.Properties())
+            {
+                if (prop.Value.Type != JTokenType.Array && prop.Value.Type != JTokenType.Object)
+                {
+                    headers.Add(prop.Name);
+                }
+            }
+        }
+        return headers;
     }
 }
