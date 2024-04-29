@@ -16,13 +16,21 @@ class Program
         foreach (var jsonFilePath in jsonFiles)
         {
             string jsonData = File.ReadAllText(jsonFilePath);
-            JObject jsonObject = JObject.Parse(jsonData);
+            JToken jsonToken = JToken.Parse(jsonData);
 
             string baseFileName = Path.GetFileNameWithoutExtension(jsonFilePath);
             string csvFilePath = Path.Combine(directoryPath, $"{baseFileName}_combined.csv");
             var csv = new StringBuilder();
 
-            ProcessJObject(jsonObject, csv, new List<string>());
+            // Start the process based on the type of the root token
+            if (jsonToken.Type == JTokenType.Object)
+            {
+                ProcessJObject((JObject)jsonToken, csv, new List<string>());
+            }
+            else if (jsonToken.Type == JTokenType.Array)
+            {
+                ProcessJArray((JArray)jsonToken, csv, new List<string>());
+            }
 
             File.WriteAllText(csvFilePath, csv.ToString());
             Console.WriteLine($"Combined CSV file has been saved: {csvFilePath}");
@@ -37,25 +45,16 @@ class Program
 
         foreach (var property in jObject.Properties())
         {
-            if (property.Value is JArray array)
-            {
-                hasSubObject = true;
-                int index = 0;
-                foreach (var item in array)
-                {
-                    if (item is JObject subObject)
-                    {
-                        List<string> newParentKeys = new List<string>(parentKeys) { property.Name + "_" + index };
-                        ProcessJObject(subObject, csv, newParentKeys);
-                        index++;
-                    }
-                }
-            }
-            else if (property.Value is JObject subObject)
+            if (property.Value is JObject subObject)
             {
                 hasSubObject = true;
                 List<string> newParentKeys = new List<string>(parentKeys) { property.Name };
                 ProcessJObject(subObject, csv, newParentKeys);
+            }
+            else if (property.Value is JArray array)
+            {
+                hasSubObject = true;
+                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name });
             }
             else
             {
@@ -64,14 +63,24 @@ class Program
             }
         }
 
-        if (!hasSubObject)
+        if (!hasSubObject && headers.Count > 0)
         {
-            if (headers.Count > 0)
+            csv.AppendLine(string.Join(",", headers));
+            csv.AppendLine(string.Join(",", values));
+            csv.AppendLine();  // Add a blank line to separate different "tables"
+        }
+    }
+
+    static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys)
+    {
+        int index = 0;
+        foreach (JToken item in jArray)
+        {
+            if (item.Type == JTokenType.Object)
             {
-                csv.AppendLine(string.Join(",", headers));
-                csv.AppendLine(string.Join(",", values));
-                csv.AppendLine();  // Add a blank line to separate different "tables"
+                ProcessJObject((JObject)item, csv, new List<string>(parentKeys) { $"{index}" });
             }
+            index++;
         }
     }
 }
