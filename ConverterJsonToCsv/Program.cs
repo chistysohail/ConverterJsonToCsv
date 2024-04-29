@@ -38,38 +38,41 @@ class Program
 
     static void ProcessJObject(JObject jObject, StringBuilder csv, List<string> parentKeys, int serialNumber)
     {
+        List<string> headers = new List<string> { "Serial Number" };
+        List<string> values = new List<string> { serialNumber.ToString() };
+        bool firstItem = true;
         foreach (var property in jObject.Properties())
         {
             if (property.Value is JObject subObject)
             {
-                // Pass serialNumber without incrementing for nested objects
                 ProcessJObject(subObject, csv, new List<string>(parentKeys) { property.Name }, serialNumber);
             }
-            else if (property.Value is JArray array)
+            else if (property.Value is JArray array && property.Name == "Skills")
             {
-                // Increment serialNumber for each element in the array if it's a list of objects
-                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name }, property.Name, serialNumber);
+                // Handle Skills by joining them into a single column
+                values.Add(string.Join(", ", array.ToObject<List<string>>()));
+                if (firstItem) headers.Add("Skills");
             }
             else
             {
-                var headers = new List<string> { "Serial Number" };
-                var values = new List<string> { serialNumber.ToString() };
-                headers.Add(string.Join("_", parentKeys) + "_" + property.Name);
+                if (firstItem) headers.Add(property.Name);
                 values.Add(property.Value.ToString());
-
-                // Print headers only once
-                if (csv.Length == 0)
-                {
-                    csv.AppendLine(string.Join(",", headers));
-                }
-                csv.AppendLine(string.Join(",", values));
             }
+            firstItem = false;
+        }
+
+        if (headers.Count > 1) // Ensure we have more than just the serial number
+        {
+            if (csv.Length == 0)
+            {
+                csv.AppendLine(string.Join(",", headers));
+            }
+            csv.AppendLine(string.Join(",", values));
         }
     }
 
     static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys, string arrayName, int serialNumber)
     {
-        int index = 1; // Start indexing from 1 for serial numbers
         foreach (JToken item in jArray)
         {
             if (item.Type == JTokenType.Object)
