@@ -22,14 +22,13 @@ class Program
             string csvFilePath = Path.Combine(directoryPath, $"{baseFileName}_combined.csv");
             var csv = new StringBuilder();
 
-            // Start the process based on the type of the root token
             if (jsonToken.Type == JTokenType.Object)
             {
-                ProcessJObject((JObject)jsonToken, csv, new List<string>());
+                ProcessJObject((JObject)jsonToken, csv, new List<string>(), 1);
             }
             else if (jsonToken.Type == JTokenType.Array)
             {
-                ProcessJArray((JArray)jsonToken, csv, new List<string>(), "Root");
+                ProcessJArray((JArray)jsonToken, csv, new List<string>(), "Root", 1);
             }
 
             File.WriteAllText(csvFilePath, csv.ToString());
@@ -37,59 +36,46 @@ class Program
         }
     }
 
-    static void ProcessJObject(JObject jObject, StringBuilder csv, List<string> parentKeys)
+    static void ProcessJObject(JObject jObject, StringBuilder csv, List<string> parentKeys, int serialNumber)
     {
-        var headers = new List<string> { "Serial Number" };
-        var values = new List<string>();
-        int serialNumber = 1;
-        bool hasSubItems = false;
-
         foreach (var property in jObject.Properties())
         {
             if (property.Value is JObject subObject)
             {
-                ProcessJObject(subObject, csv, new List<string>(parentKeys) { property.Name });
+                // Pass serialNumber without incrementing for nested objects
+                ProcessJObject(subObject, csv, new List<string>(parentKeys) { property.Name }, serialNumber);
             }
             else if (property.Value is JArray array)
             {
-                if (property.Name == "Skills")
-                {
-                    hasSubItems = true;
-                    continue; // Skip adding to headers, handle separately
-                }
-                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name }, property.Name);
+                // Increment serialNumber for each element in the array if it's a list of objects
+                ProcessJArray(array, csv, new List<string>(parentKeys) { property.Name }, property.Name, serialNumber);
             }
             else
             {
-                headers.Add(property.Name);
+                var headers = new List<string> { "Serial Number" };
+                var values = new List<string> { serialNumber.ToString() };
+                headers.Add(string.Join("_", parentKeys) + "_" + property.Name);
                 values.Add(property.Value.ToString());
-            }
-        }
 
-        if (values.Count > 0)
-        {
-            // Print headers
-            csv.AppendLine(string.Join(",", headers));
-            // Print values
-            csv.AppendLine($"{serialNumber++},{string.Join(",", values)}");
-            if (hasSubItems && jObject["Skills"] != null)
-            {
-                // Special handling for Skills array
-                csv.AppendLine("      Skills 1," + string.Join(",", jObject["Skills"]));
+                // Print headers only once
+                if (csv.Length == 0)
+                {
+                    csv.AppendLine(string.Join(",", headers));
+                }
+                csv.AppendLine(string.Join(",", values));
             }
-            csv.AppendLine();  // Add a blank line to separate different entries
         }
     }
 
-    static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys, string arrayName)
+    static void ProcessJArray(JArray jArray, StringBuilder csv, List<string> parentKeys, string arrayName, int serialNumber)
     {
-        int index = 0;
+        int index = 1; // Start indexing from 1 for serial numbers
         foreach (JToken item in jArray)
         {
             if (item.Type == JTokenType.Object)
             {
                 JObject obj = (JObject)item;
-                ProcessJObject(obj, csv, new List<string>(parentKeys) { $"{index++}" });
+                ProcessJObject(obj, csv, new List<string>(parentKeys) { arrayName }, serialNumber++);
             }
         }
     }
