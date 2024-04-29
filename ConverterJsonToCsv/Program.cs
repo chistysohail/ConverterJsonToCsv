@@ -1,58 +1,77 @@
 ﻿using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using Newtonsoft.Json.Linq;
 using System.Text;
 using System.IO;
+using Newtonsoft.Json;
 
 class Program
 {
     static void Main()
     {
-        // Ask for the directory path
         Console.Write("Enter the directory path: ");
         string directoryPath = Console.ReadLine();
 
-        // Get all JSON files in the directory
         string[] jsonFiles = Directory.GetFiles(directoryPath, "*.json");
-
         foreach (var jsonFilePath in jsonFiles)
         {
-            // Read JSON data from file
             string jsonData = File.ReadAllText(jsonFilePath);
+            JObject jsonObject = JObject.Parse(jsonData);
 
-            // Deserialize JSON to a dynamic object
-            var items = JsonConvert.DeserializeObject<List<Dictionary<string, object>>>(jsonData);
-
-            // Generate CSV data
+            string baseFileName = Path.GetFileNameWithoutExtension(jsonFilePath);
+            string csvFilePath = Path.Combine(directoryPath, $"{baseFileName}_combined.csv");
             var csv = new StringBuilder();
-            if (items.Count > 0)
-            {
-                // Add headers
-                AddCsvRow(csv, items[0].Keys);
 
-                // Add data
-                foreach (var item in items)
-                {
-                    AddCsvRow(csv, item.Values);
-                }
-            }
+            ProcessJObject(jsonObject, csv, new List<string>());
 
-            // Create a timestamp for the filename
-            string timestamp = DateTime.Now.ToString("yyyyMMddHHmmss");
-            string csvFileName = $"Exported_{Path.GetFileNameWithoutExtension(jsonFilePath)}_{timestamp}.csv";
-            string csvFilePath = Path.Combine(directoryPath, csvFileName);
-
-            // Save CSV to file
             File.WriteAllText(csvFilePath, csv.ToString());
-
-            // Inform the user
-            Console.WriteLine($"CSV file has been saved: {csvFilePath}");
+            Console.WriteLine($"Combined CSV file has been saved: {csvFilePath}");
         }
     }
 
-    static void AddCsvRow(StringBuilder csvBuilder, IEnumerable<object> fields)
+    static void ProcessJObject(JObject jObject, StringBuilder csv, List<string> parentKeys)
     {
-        string row = string.Join(",", fields);
-        csvBuilder.AppendLine(row);
+        var headers = new List<string>();
+        var values = new List<string>();
+        bool hasSubObject = false;
+
+        foreach (var property in jObject.Properties())
+        {
+            if (property.Value is JArray array)
+            {
+                hasSubObject = true;
+                int index = 0;
+                foreach (var item in array)
+                {
+                    if (item is JObject subObject)
+                    {
+                        List<string> newParentKeys = new List<string>(parentKeys) { property.Name + "_" + index };
+                        ProcessJObject(subObject, csv, newParentKeys);
+                        index++;
+                    }
+                }
+            }
+            else if (property.Value is JObject subObject)
+            {
+                hasSubObject = true;
+                List<string> newParentKeys = new List<string>(parentKeys) { property.Name };
+                ProcessJObject(subObject, csv, newParentKeys);
+            }
+            else
+            {
+                headers.Add(string.Join("_", parentKeys) + "_" + property.Name);
+                values.Add(property.Value.ToString());
+            }
+        }
+
+        if (!hasSubObject)
+        {
+            if (headers.Count > 0)
+            {
+                csv.AppendLine(string.Join(",", headers));
+                csv.AppendLine(string.Join(",", values));
+                csv.AppendLine();  // Add a blank line to separate different "tables"
+            }
+        }
     }
 }
